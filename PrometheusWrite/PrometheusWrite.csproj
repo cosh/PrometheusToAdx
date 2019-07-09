@@ -9,6 +9,9 @@
     <PackageReference Include="Snappy.Sharp" Version="1.0.0" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\PrmoetheusHelper\PrmoetheusHelper.csproj" />
+  </ItemGroup>
+  <ItemGroup>
     <None Update="host.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
