@@ -6,28 +6,37 @@ using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
+using Snappy;
+using System.IO.Compression;
 
 namespace PrometheusWrite
 {
     public static class Write
     {
         [FunctionName("Write")]
-        public static async Task<IActionResult> Run(
+        [return: EventHub("outputEventHubMessage", Connection = "EventHubConnectionAppSetting")]
+        public static String Run(
             [HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] HttpRequest req,
             ILogger log)
         {
             log.LogInformation("C# HTTP trigger function processed a request.");
 
-            string name = req.Query["name"];
+            var decompressed = DecompressBody(req.Body);
 
-            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            dynamic data = JsonConvert.DeserializeObject(requestBody);
-            name = name ?? data?.name;
+            return "testteerst";
+        }
 
-            return name != null
-                ? (ActionResult)new OkObjectResult($"Hello, {name}")
-                : new BadRequestObjectResult("Please pass a name on the query string or in the request body");
+        private static String DecompressBody(Stream body)
+        {
+            MemoryStream ms = new MemoryStream();
+            body.CopyTo(ms);
+
+            var decompressor = new Snappy.Sharp.SnappyDecompressor();
+            var source = ms.ToArray();
+
+            var decompressed = decompressor.Decompress(source, 0, source.Length);
+
+            return System.Text.Encoding.UTF8.GetString(decompressed);
         }
     }
 }
