@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Snappy.Sharp;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -7,17 +8,23 @@ namespace PrmoetheusHelper.Helper
 {
     public class Conversion
     {
+        private static SnappyDecompressor decompressor = new SnappyDecompressor();
+
         public static byte[] DecompressBody(Stream body)
         {
             MemoryStream ms = new MemoryStream();
             body.CopyTo(ms);
 
-            var decompressor = new Snappy.Sharp.SnappyDecompressor();
             var source = ms.ToArray();
 
-            var decompressed = decompressor.Decompress(source, 0, source.Length);
+            if (source != null && source.Length > 0)
+            {
+                var decompressed = decompressor.Decompress(source, 0, source.Length);
 
-            return decompressed;
+                return decompressed;
+            }
+
+            return null;
         }
     }
 }
