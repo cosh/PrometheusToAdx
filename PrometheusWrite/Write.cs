@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Prometheus;
 using Newtonsoft.Json;
+using PrmoetheusHelper.Helper;
 
 namespace PrometheusWrite
 {
@@ -17,7 +18,7 @@ namespace PrometheusWrite
             [EventHub("dest", Connection = "EventHubConnectionAppSetting")]IAsyncCollector<string> outputEvents,
             ILogger log)
         {
-            var decompressed = DecompressBody(req.Body);
+            var decompressed = Conversion.DecompressBody(req.Body);
 
             var writerequest = WriteRequest.Parser.ParseFrom(decompressed);
 
@@ -25,19 +26,6 @@ namespace PrometheusWrite
             {
                 await outputEvents.AddAsync(JsonConvert.SerializeObject(aTimeseries));
             }
-        }
-
-        private static byte[] DecompressBody(Stream body)
-        {
-            MemoryStream ms = new MemoryStream();
-            body.CopyTo(ms);
-
-            var decompressor = new Snappy.Sharp.SnappyDecompressor();
-            var source = ms.ToArray();
-
-            var decompressed = decompressor.Decompress(source, 0, source.Length);
-
-            return decompressed;
         }
     }
 }

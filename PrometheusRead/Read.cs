@@ -7,27 +7,25 @@ using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using PrmoetheusHelper.Helper;
+using Prometheus;
 
 namespace PrometheusRead
 {
     public static class Read
     {
         [FunctionName("Read")]
-        public static async Task<IActionResult> Run(
+        public static async Task<ReadResponse> Run(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = null)] HttpRequest req,
             ILogger log)
         {
-            log.LogInformation("C# HTTP trigger function processed a request.");
+            var decompressed = Conversion.DecompressBody(req.Body);
 
-            string name = req.Query["name"];
+            var readrequest = ReadRequest.Parser.ParseFrom(decompressed);
 
-            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            dynamic data = JsonConvert.DeserializeObject(requestBody);
-            name = name ?? data?.name;
 
-            return name != null
-                ? (ActionResult)new OkObjectResult($"Hello, {name}")
-                : new BadRequestObjectResult("Please pass a name on the query string or in the request body");
+
+            return null;
         }
     }
 }
