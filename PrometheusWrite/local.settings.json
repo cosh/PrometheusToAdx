@@ -1,0 +1,6 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "EventHubConnectionAppSetting": "<the connection string to the eventhub>"
+  }
+}

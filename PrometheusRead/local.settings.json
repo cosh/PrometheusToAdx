@@ -1,0 +1,9 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "kustoUrl": "<the kust url>",
+    "appClientId": "<the client id of the aad app>",
+    "appClientSecret": "<the secret for aad app>",
+    "tenantId": "<the tenant id>"
+  }
+}
