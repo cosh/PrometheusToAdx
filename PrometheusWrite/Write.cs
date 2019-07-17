@@ -7,6 +7,8 @@ using Microsoft.Extensions.Logging;
 using Prometheus;
 using Newtonsoft.Json;
 using PrmoetheusHelper.Helper;
+using System.Collections.Generic;
+using System;
 
 namespace PrometheusWrite
 {
@@ -21,6 +23,8 @@ namespace PrometheusWrite
             var decompressed = Conversion.DecompressBody(req.Body);
 
             var writerequest = WriteRequest.Parser.ParseFrom(decompressed);
+
+            log.LogMetric("timeserieswrite", writerequest.Timeseries.Count, new Dictionary<String, object>() { { "type", "count" } });
 
             foreach (var aTimeseries in writerequest.Timeseries)
             {

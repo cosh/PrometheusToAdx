@@ -7,7 +7,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PrometheusRead", "Prometheu
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PrometheusWrite", "PrometheusWrite\PrometheusWrite.csproj", "{1258AE46-D6DF-4E9C-BC6D-F1D794658BF1}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PrmoetheusHelper", "PrmoetheusHelper\PrmoetheusHelper.csproj", "{FC145C54-318C-4105-A8AB-051E1BA62581}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PrmoetheusHelper", "PrmoetheusHelper\PrmoetheusHelper.csproj", "{FC145C54-318C-4105-A8AB-051E1BA62581}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
