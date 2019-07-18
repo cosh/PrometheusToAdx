@@ -43,7 +43,7 @@ namespace PrometheusRead
 
                 log.LogMetric("querycount", readrequest.Queries.Count, new Dictionary<String, object>() { { "type", "count" } });
 
-                ReadResponse response = CreateResponse(readrequest);
+                ReadResponse response = CreateResponse(readrequest, log);
 
                 log.LogMetric("result", response.Results.Count , new Dictionary<String, object>() { { "type", "count" } });
                 log.LogMetric("timeseriesread", response.Results.Select(_ => _.Timeseries.Count).Sum(__ => __), new Dictionary<String, object>() { { "type", "count" } });
@@ -93,7 +93,7 @@ namespace PrometheusRead
             }
         }
 
-        private static ReadResponse CreateResponse(ReadRequest readrequest)
+        private static ReadResponse CreateResponse(ReadRequest readrequest, ILogger log)
         {
             ReadResponse result = new ReadResponse();
 
@@ -105,6 +105,8 @@ namespace PrometheusRead
                 sb.AppendLine($"SearchTimeseries({aQuery.StartTimestampMs}, {aQuery.EndTimestampMs})");
                 sb.AppendLine("| where " + String.Join(" and ", aQuery.Matchers.Select(aMatch => $"({GenerateValueExpression(aMatch.Name, aMatch.Type, aMatch.Value)})")));
                 sb.AppendLine("| project timeseries");
+
+                log.LogTrace($"KQL: {sb.ToString()}");
 
                 tasklist.Add(adx.ExecuteQueryAsync(databaseName: "sensordata", query: sb.ToString(), null));
             }
