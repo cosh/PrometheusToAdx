@@ -2,10 +2,14 @@
 
 This is a a set of two [functions](https://azure.microsoft.com/en-us/services/functions/) which are needed for the "remote_write" and "remote_read" configuration of [Prometheus](https://prometheus.io/). It enables the user to use [Azure Data Explorer](https://azure.microsoft.com/en-us/services/data-explorer/) to read and write metrics.
 
+## Architecture
+![Alt text](https://raw.githubusercontent.com/cosh/PrometheusToAdx/master/pic/prometheusArch.svg?sanitize=true)
+
 ## HowTo
 
-1. *Deploy* the functions
-2. *Configure* prometheus
+### 1. *Deploy* the infrastructure
+### 2. *Create* tables in ADX
+### 3. *Configure* prometheus
 
 Sample config extension for prometheus.yml:
 ``` 
