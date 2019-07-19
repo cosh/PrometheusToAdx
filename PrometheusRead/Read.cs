@@ -106,7 +106,7 @@ namespace PrometheusRead
                 sb.AppendLine("| where " + String.Join(" and ", aQuery.Matchers.Select(aMatch => $"({GenerateValueExpression(aMatch.Name, aMatch.Type, aMatch.Value)})")));
                 sb.AppendLine("| project timeseries");
 
-                log.LogTrace($"KQL: {sb.ToString()}");
+                log.LogInformation($"KQL: {sb.ToString()}");
 
                 tasklist.Add(adx.ExecuteQueryAsync(databaseName: "sensordata", query: sb.ToString(), null));
             }
