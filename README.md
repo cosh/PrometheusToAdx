@@ -1,6 +1,6 @@
 # Azure Data Explorer Storage adapter for Prometheus.io
 
-This is a a set of two [functions](https://azure.microsoft.com/en-us/services/functions/) which are needed for the "remote_write" and "remote_read" configuration of [Prometheus](https://prometheus.io/). It enables the user to use [Azure Data Explorer](https://azure.microsoft.com/en-us/services/data-explorer/) to read and write metrics.
+This is a a set of two [functions](https://azure.microsoft.com/en-us/services/functions/) which are needed for the "remote_write" and "remote_read" configuration of [Prometheus](https://prometheus.io/). It enables the user to use [Azure Data Explorer](https://azure.microsoft.com/en-us/services/data-explorer/) to read and write metrics. Some more details can be found on this [article](https://www.linkedin.com/pulse/prometheusio-azure-data-explorer-henning-rauch/).
 
 ## Architecture
 ![Alt text](https://raw.githubusercontent.com/cosh/PrometheusToAdx/master/pic/simpleArch.png)
