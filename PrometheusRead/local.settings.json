@@ -4,6 +4,8 @@
     "kustoUrl": "<the kust url>",
     "appClientId": "<the client id of the aad app>",
     "appClientSecret": "<the secret for aad app>",
-    "tenantId": "<the tenant id>"
+    "tenantId": "<the tenant id>",
+    "FUNCTIONS_INPROC_NET8_ENABLED": "1",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet"
   }
 }

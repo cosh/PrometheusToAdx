@@ -1,6 +1,8 @@
 {
   "IsEncrypted": false,
   "Values": {
-    "EventHubConnectionAppSetting": "<the connection string to the eventhub>"
+    "EventHubConnectionAppSetting": "<the connection string to the eventhub>",
+    "FUNCTIONS_INPROC_NET8_ENABLED": "1",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet"
   }
 }
