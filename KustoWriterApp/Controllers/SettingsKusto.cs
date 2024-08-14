@@ -9,6 +9,9 @@
         public string? DbName { get; set; }
         public string? TableName { get; set; }
         public string? MappingName { get; set; }
+        public bool UseManagedIdentity { get; set; } = false;
+        public string? AppId { get; set; }
+        public string? AccessToken { get; set; }
         public int MaxRetries { get; set; } = 10;
         public int MsBetweenRetries { get; set; } = 60000;
     }

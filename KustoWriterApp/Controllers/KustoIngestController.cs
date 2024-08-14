@@ -27,13 +27,30 @@ namespace KustoWriterApp.Controllers
         {
             _logger = logger;
             _settings = options.Value;
-            _kustoConnectionStringBuilderEngine =
-                new KustoConnectionStringBuilder($"https://{_settings.ClusterName}.kusto.windows.net").WithAadApplicationKeyAuthentication(
-                    applicationClientId: _settings.ClientId,
-                    applicationKey: _settings.ClientSecret,
-                    authority: _settings.TenantId);
-            _kustoConnectionStringBuilderEngine.SetConnectorDetails("KustoWriterApp", "1.0.0");
+            var baseKcsb =
+                new KustoConnectionStringBuilder($"https://{_settings.ClusterName}.kusto.windows.net");
 
+            if (_settings.UseManagedIdentity)
+            {
+                if (string.IsNullOrEmpty(_settings.AppId))
+                {
+                    _kustoConnectionStringBuilderEngine = baseKcsb.WithAadSystemManagedIdentity();
+                }
+                else
+                {
+                    _kustoConnectionStringBuilderEngine = baseKcsb.WithAadUserManagedIdentity(_settings.AppId);
+                }
+            }
+            else if (string.IsNullOrEmpty(_settings.AccessToken))
+            {
+                _kustoConnectionStringBuilderEngine = baseKcsb.WithAadUserTokenAuthentication(_settings.AccessToken);
+            }
+            else
+            {
+                _kustoConnectionStringBuilderEngine = baseKcsb.WithAadApplicationKeyAuthentication(
+                    _settings.ClientId, _settings.ClientSecret, _settings.TenantId);
+            }
+            _kustoConnectionStringBuilderEngine.SetConnectorDetails("KustoWriterApp", "1.0.0");
             _kustoIngestionProperties = new KustoIngestionProperties(databaseName: _settings.DbName, tableName: _settings.TableName);
             if (!string.IsNullOrEmpty(_settings.MappingName))
             {
