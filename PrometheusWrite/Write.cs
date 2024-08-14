@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Prometheus;
 using Newtonsoft.Json;
-using PrmoetheusHelper.Helper;
+using PrometheusHelper.Helper;
 using System.Collections.Generic;
 using System;
 
@@ -17,7 +17,7 @@ namespace PrometheusWrite
         [FunctionName("Write")]
         public static async Task Run(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = null)] HttpRequest req,
-            [EventHub("dest", Connection = "EventHubConnectionAppSetting")]IAsyncCollector<string> outputEvents,
+            [EventHub("dest", Connection = "EventHubConnectionAppSetting")] IAsyncCollector<string> outputEvents,
             ILogger log)
         {
             var decompressed = Conversion.DecompressBody(req.Body);

@@ -1,12 +1,10 @@
 using Kusto.Data;
 using Kusto.Ingest;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using PrmoetheusHelper.Helper;
+using PrometheusHelper.Helper;
 using Prometheus;
 using System.Collections.Concurrent;
-using System.Text;
 using System.Text.Json;
 
 namespace KustoWriterApp.Controllers
@@ -16,6 +14,8 @@ namespace KustoWriterApp.Controllers
     public class KustoIngestController : ControllerBase
     {
         private readonly ILogger<KustoIngestController> _logger;
+        private readonly KustoConnectionStringBuilder _kustoConnectionStringBuilderEngine;
+        private readonly KustoIngestionProperties _kustoIngestionProperties;
         private readonly SettingsKusto _settings;
         private static readonly ConcurrentQueue<Prometheus.TimeSeries> _timeseriesQueue = new ConcurrentQueue<Prometheus.TimeSeries>();
         private static readonly ConcurrentQueue<string> _filesToIngest = new ConcurrentQueue<string>();
@@ -27,6 +27,19 @@ namespace KustoWriterApp.Controllers
         {
             _logger = logger;
             _settings = options.Value;
+            _kustoConnectionStringBuilderEngine =
+                new KustoConnectionStringBuilder($"https://{_settings.ClusterName}.kusto.windows.net").WithAadApplicationKeyAuthentication(
+                    applicationClientId: _settings.ClientId,
+                    applicationKey: _settings.ClientSecret,
+                    authority: _settings.TenantId);
+            _kustoConnectionStringBuilderEngine.SetConnectorDetails("KustoWriterApp", "1.0.0");
+
+            _kustoIngestionProperties = new KustoIngestionProperties(databaseName: _settings.DbName, tableName: _settings.TableName);
+            if (!string.IsNullOrEmpty(_settings.MappingName))
+            {
+                _kustoIngestionProperties.SetAppropriateMappingReference(_settings.MappingName, Kusto.Data.Common.DataSourceFormat.json);
+            }
+            _kustoIngestionProperties.Format = Kusto.Data.Common.DataSourceFormat.json;
             StartBackgroundQueueFlusher();
             StartBackgroundFileIngestor();
         }
@@ -52,7 +65,6 @@ namespace KustoWriterApp.Controllers
                     }
                 }
             }
-
             return Ok();
         }
 
@@ -107,23 +119,28 @@ namespace KustoWriterApp.Controllers
 
             int retries = 0;
 
-            var kustoConnectionStringBuilderEngine =
-                new KustoConnectionStringBuilder($"https://{_settings.ClusterName}.kusto.windows.net").WithAadApplicationKeyAuthentication(
-                    applicationClientId: _settings.ClientId,
-                    applicationKey: _settings.ClientSecret,
-                    authority: _settings.TenantId);
 
-            using (IKustoIngestClient client = KustoIngestFactory.CreateDirectIngestClient(kustoConnectionStringBuilderEngine))
+
+            using (IKustoIngestClient client = KustoIngestFactory.CreateDirectIngestClient(_kustoConnectionStringBuilderEngine))
             {
-                var kustoIngestionProperties = new KustoIngestionProperties(databaseName: _settings.DbName, tableName: _settings.TableName);
-                kustoIngestionProperties.SetAppropriateMappingReference(_settings.MappingName, Kusto.Data.Common.DataSourceFormat.json);
-                kustoIngestionProperties.Format = Kusto.Data.Common.DataSourceFormat.json;
-
+                var sourceGuid = Guid.NewGuid();
+                var sourceOptions = new StorageSourceOptions
+                {
+                    DeleteSourceOnSuccess = true,
+                    SourceId = sourceGuid
+                };
                 while (retries < _settings.MaxRetries)
                 {
                     try
                     {
-                        client.IngestFromStorage(filePath, kustoIngestionProperties);
+                        Task<IKustoIngestionResult> ingestTask = client.IngestFromStorageAsync(filePath, _kustoIngestionProperties, sourceOptions);
+                        await ingestTask.ContinueWith(task =>
+                        {
+                            if (task.IsFaulted)
+                            {
+                                _logger.LogError(task.Exception, $"Could not ingest {filePath} into table {_settings.TableName}. Failed source id {sourceGuid}");
+                            }
+                        });
                         return;
                     }
                     catch (Exception e)

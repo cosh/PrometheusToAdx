@@ -8,7 +8,7 @@ using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
-using PrmoetheusHelper.Helper;
+using PrometheusHelper.Helper;
 using Prometheus;
 using Snappy.Sharp;
 using Kusto.Data.Common;
@@ -45,7 +45,7 @@ namespace PrometheusRead
 
                 ReadResponse response = CreateResponse(readrequest, log);
 
-                log.LogMetric("result", response.Results.Count , new Dictionary<String, object>() { { "type", "count" } });
+                log.LogMetric("result", response.Results.Count, new Dictionary<String, object>() { { "type", "count" } });
                 log.LogMetric("timeseriesread", response.Results.Select(_ => _.Timeseries.Count).Sum(__ => __), new Dictionary<String, object>() { { "type", "count" } });
 
                 MemoryStream ms = new MemoryStream();
@@ -59,7 +59,7 @@ namespace PrometheusRead
                 if (resultUncompressed.Length > 0)
                 {
                     //should be at least the size of the uncompressed one
-                    byte[] resultCompressed = new byte[resultUncompressed.Length*2];
+                    byte[] resultCompressed = new byte[resultUncompressed.Length * 2];
 
                     var compressedSize = compressor.Compress(resultUncompressed, 0, resultUncompressed.Length, resultCompressed);
 
@@ -68,7 +68,7 @@ namespace PrometheusRead
                     return resultCompressed;
                 }
                 else
-                    return resultUncompressed;    
+                    return resultUncompressed;
             }
 
             return null;
@@ -78,7 +78,7 @@ namespace PrometheusRead
         {
             lock (_lock)
             {
-                if(!_isInitialized)
+                if (!_isInitialized)
                 {
                     KustoConnectionStringBuilder connection =
                         new KustoConnectionStringBuilder(Environment.GetEnvironmentVariable("kustoUrl", EnvironmentVariableTarget.Process)).WithAadApplicationKeyAuthentication(
@@ -128,7 +128,7 @@ namespace PrometheusRead
 
                 result.Timeseries.Add(JsonConvert.DeserializeObject<TimeSeries>(timeSeriesObject.ToString()));
             }
-            
+
             reader.Close();
 
             return result;
