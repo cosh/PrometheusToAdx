@@ -85,6 +85,7 @@ namespace KustoWriterApp.Controllers
 
                     if (_timeseriesQueue.Count > _settings.MaxBatchSize)
                     {
+                        _logger.LogDebug($"Queue size {_timeseriesQueue.Count} exceeds max batch size {_settings.MaxBatchSize} at time {DateTime.UtcNow}");
                         await WriteQueueToFileAsync();
                     }
                 }
@@ -99,6 +100,7 @@ namespace KustoWriterApp.Controllers
                 while (!_cancellationTokenSource.Token.IsCancellationRequested)
                 {
                     await Task.Delay(TimeSpan.FromSeconds(_settings.MaxBatchIntervalSeconds), _cancellationTokenSource.Token);
+                    _logger.LogDebug($"Max batch interval reached. Writing to file. Queue size {_timeseriesQueue.Count} at time {DateTime.UtcNow}");
                     await WriteQueueToFileAsync();
                 }
             }, _cancellationTokenSource.Token);
@@ -121,17 +123,25 @@ namespace KustoWriterApp.Controllers
 
         private async Task WriteQueueToFileAsync()
         {
-            var filePath = Path.Combine(Path.GetTempPath(), $"timeseries_{DateTime.UtcNow:yyyyMMddHHmmss}.json");
-            var timeseriesList = new List<Prometheus.TimeSeries>();
-            while (_timeseriesQueue.TryDequeue(out var timeseries))
+            await _ingestorSemaphore.WaitAsync();
+            try
             {
-                timeseriesList.Add(timeseries);
+                var filePath = Path.Combine(Path.GetTempPath(), $"timeseries_{DateTime.UtcNow:yyyyMMddHHmmss}.json");
+                var timeseriesList = new List<Prometheus.TimeSeries>();
+                while (_timeseriesQueue.TryDequeue(out var timeseries))
+                {
+                    timeseriesList.Add(timeseries);
+                }
+                if (timeseriesList.Count > 0)
+                {
+                    var json = JsonSerializer.Serialize(timeseriesList, options);
+                    await System.IO.File.WriteAllTextAsync(filePath, json);
+                    _filesToIngest.Enqueue(filePath);
+                }
             }
-            if (timeseriesList.Count > 0)
+            finally
             {
-                var json = JsonSerializer.Serialize(timeseriesList, options);
-                await System.IO.File.WriteAllTextAsync(filePath, json);
-                _filesToIngest.Enqueue(filePath);
+                _ingestorSemaphore.Release();
             }
         }
 
@@ -152,7 +162,6 @@ namespace KustoWriterApp.Controllers
                         DeleteSourceOnSuccess = true,
                         SourceId = sourceGuid,
                     };
-                    await _ingestorSemaphore.WaitAsync();
                     try
                     {
                         _logger.LogInformation($"Ingesting {filePath} into table {_settings.TableName}. Source id {sourceGuid} at time {DateTime.UtcNow}");
@@ -180,10 +189,6 @@ namespace KustoWriterApp.Controllers
                         _logger.LogError(e, $"Could not ingest {filePath} into table {_settings.TableName}.");
                         retries++;
                         Thread.Sleep(_settings.MsBetweenRetries);
-                    }
-                    finally
-                    {
-                        _ingestorSemaphore.Release();
                     }
                 }
                 _sourceIdFileCache.TryRemove(filePath, out _);
