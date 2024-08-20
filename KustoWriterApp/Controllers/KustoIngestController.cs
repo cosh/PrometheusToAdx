@@ -21,7 +21,7 @@ namespace KustoWriterApp.Controllers
         private readonly SettingsKusto _settings;
         private static readonly ConcurrentQueue<Prometheus.TimeSeries> _timeseriesQueue = new ConcurrentQueue<Prometheus.TimeSeries>();
         private static readonly ConcurrentDictionary<string, System.Guid> _sourceIdFileCache = new ConcurrentDictionary<string, System.Guid>();
-        private readonly SemaphoreSlim _ingestorSemaphore = new SemaphoreSlim(1, 1);
+        private readonly ReaderWriterLock _locker = new ReaderWriterLock();
 
         private static readonly ConcurrentQueue<string> _filesToIngest = new ConcurrentQueue<string>();
         private static readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
@@ -100,8 +100,11 @@ namespace KustoWriterApp.Controllers
                 while (!_cancellationTokenSource.Token.IsCancellationRequested)
                 {
                     await Task.Delay(TimeSpan.FromSeconds(_settings.MaxBatchIntervalSeconds), _cancellationTokenSource.Token);
-                    _logger.LogDebug($"Max batch interval reached. Writing to file. Queue size {_timeseriesQueue.Count} at time {DateTime.UtcNow}");
-                    await WriteQueueToFileAsync();
+                    if (_timeseriesQueue.Count > 0)
+                    {
+                        _logger.LogDebug($"Max batch interval reached. Writing to file. Queue size {_timeseriesQueue.Count} at time {DateTime.UtcNow}");
+                        await WriteQueueToFileAsync();
+                    }
                 }
             }, _cancellationTokenSource.Token);
         }
@@ -123,9 +126,10 @@ namespace KustoWriterApp.Controllers
 
         private async Task WriteQueueToFileAsync()
         {
-            await _ingestorSemaphore.WaitAsync();
+            
             try
             {
+                _locker.AcquireWriterLock(int.MaxValue);
                 var filePath = Path.Combine(Path.GetTempPath(), $"timeseries_{DateTime.UtcNow:yyyyMMddHHmmss}.json");
                 var timeseriesList = new List<Prometheus.TimeSeries>();
                 while (_timeseriesQueue.TryDequeue(out var timeseries))
@@ -141,7 +145,7 @@ namespace KustoWriterApp.Controllers
             }
             finally
             {
-                _ingestorSemaphore.Release();
+                _locker.ReleaseWriterLock();
             }
         }
 
