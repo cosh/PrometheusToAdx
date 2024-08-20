@@ -21,6 +21,8 @@ namespace KustoWriterApp.Controllers
         private readonly SettingsKusto _settings;
         private static readonly ConcurrentQueue<Prometheus.TimeSeries> _timeseriesQueue = new ConcurrentQueue<Prometheus.TimeSeries>();
         private static readonly ConcurrentDictionary<string, System.Guid> _sourceIdFileCache = new ConcurrentDictionary<string, System.Guid>();
+        private readonly SemaphoreSlim _ingestorSemaphore = new SemaphoreSlim(1, 1);
+
         private static readonly ConcurrentQueue<string> _filesToIngest = new ConcurrentQueue<string>();
         private static readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
         private static readonly JsonSerializerOptions options = new JsonSerializerOptions
@@ -140,21 +142,26 @@ namespace KustoWriterApp.Controllers
             // For example, you can use the Kusto Data SDK to ingest the file into a Kusto database
             // This is a placeholder for the actual ingestion logic
             int retries = 0;
-
             using (IKustoIngestClient client = KustoIngestFactory.CreateQueuedIngestClient(_kustoConnectionStringBuilderEngine, new QueueOptions { MaxRetries = _settings.MaxRetries }))
             {
                 while (retries < _settings.MaxRetries) // TODO Should we have this retry since non perm failures are retried automatically 
                 {
-
                     var sourceGuid = _sourceIdFileCache.GetOrAdd(filePath, Guid.NewGuid());
                     var sourceOptions = new StorageSourceOptions
                     {
                         DeleteSourceOnSuccess = true,
                         SourceId = sourceGuid,
                     };
+                    await _ingestorSemaphore.WaitAsync();
                     try
                     {
                         _logger.LogInformation($"Ingesting {filePath} into table {_settings.TableName}. Source id {sourceGuid} at time {DateTime.UtcNow}");
+                        // Fix for the file not found issue
+                        if (!System.IO.File.Exists(filePath))
+                        {
+                            _logger.LogWarning($"File {filePath} does not exist. Skipping ingestion.");
+                            return;
+                        }
                         Task<IKustoIngestionResult> ingestTask = client.IngestFromStorageAsync(filePath, _kustoIngestionProperties, sourceOptions);
                         await ingestTask.ContinueWith(task =>
                         {
@@ -166,12 +173,17 @@ namespace KustoWriterApp.Controllers
                             }
                         });
                         return;
+
                     }
                     catch (Exception e)
                     {
                         _logger.LogError(e, $"Could not ingest {filePath} into table {_settings.TableName}.");
                         retries++;
                         Thread.Sleep(_settings.MsBetweenRetries);
+                    }
+                    finally
+                    {
+                        _ingestorSemaphore.Release();
                     }
                 }
                 _sourceIdFileCache.TryRemove(filePath, out _);
