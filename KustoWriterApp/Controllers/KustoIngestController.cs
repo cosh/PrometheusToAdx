@@ -1,13 +1,13 @@
 using Kusto.Data;
 using Kusto.Ingest;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using PrmoetheusHelper.Helper;
+using PrometheusHelper.Helper;
 using Prometheus;
 using System.Collections.Concurrent;
-using System.Text;
 using System.Text.Json;
+using System.Timers;
+
 
 namespace KustoWriterApp.Controllers
 {
@@ -16,19 +16,68 @@ namespace KustoWriterApp.Controllers
     public class KustoIngestController : ControllerBase
     {
         private readonly ILogger<KustoIngestController> _logger;
+        private readonly KustoConnectionStringBuilder _kustoConnectionStringBuilderEngine;
+        private readonly KustoIngestionProperties _kustoIngestionProperties;
         private readonly SettingsKusto _settings;
         private static readonly ConcurrentQueue<Prometheus.TimeSeries> _timeseriesQueue = new ConcurrentQueue<Prometheus.TimeSeries>();
+        private static readonly ConcurrentDictionary<string, System.Guid> _sourceIdFileCache = new ConcurrentDictionary<string, System.Guid>();
         private static readonly ConcurrentQueue<string> _filesToIngest = new ConcurrentQueue<string>();
-        private const int MaxQueueSize = 1000000;
-        private const int MinutesToFlush = 5;
-        private static readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
+        private static readonly JsonSerializerOptions options = new JsonSerializerOptions
+        {
+            NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals
+        };
+
+        private static System.Timers.Timer? _queueFlushTimer;
+        private static System.Timers.Timer? _ingestFlushTimer;
 
         public KustoIngestController(ILogger<KustoIngestController> logger, IOptions<SettingsKusto> options)
         {
             _logger = logger;
             _settings = options.Value;
-            StartBackgroundQueueFlusher();
-            StartBackgroundFileIngestor();
+            var baseKcsb = new KustoConnectionStringBuilder(_settings.ClusterName);
+            if (_settings.UseManagedIdentity)
+            {
+                if (string.IsNullOrEmpty(_settings.AppId))
+                {
+                    _kustoConnectionStringBuilderEngine = baseKcsb.WithAadSystemManagedIdentity();
+                }
+                else
+                {
+                    _kustoConnectionStringBuilderEngine = baseKcsb.WithAadUserManagedIdentity(_settings.AppId);
+                }
+            }
+            else if (!string.IsNullOrEmpty(_settings.AccessToken))
+            {
+                _kustoConnectionStringBuilderEngine = baseKcsb.WithAadUserTokenAuthentication(_settings.AccessToken);
+            }
+            else
+            {
+                _kustoConnectionStringBuilderEngine = baseKcsb.WithAadApplicationKeyAuthentication(
+                    _settings.ClientId, _settings.ClientSecret, _settings.TenantId);
+            }
+            _kustoConnectionStringBuilderEngine.SetConnectorDetails("KustoWriterApp", "1.0.0");
+            _kustoIngestionProperties = new KustoIngestionProperties(databaseName: _settings.DbName, tableName: _settings.TableName);
+            if (!string.IsNullOrEmpty(_settings.MappingName))
+            {
+                _kustoIngestionProperties.SetAppropriateMappingReference(_settings.MappingName, Kusto.Data.Common.DataSourceFormat.json);
+            }
+            _kustoIngestionProperties.Format = Kusto.Data.Common.DataSourceFormat.multijson;
+            // Every interval that is configured for the aggregation, add the flush to the queue
+            if (_queueFlushTimer == null)
+            {
+                _logger.LogInformation($"Initializing timer for flushing queue every {_settings.MaxBatchIntervalSeconds} seconds");
+                _queueFlushTimer = new System.Timers.Timer(_settings.MaxBatchIntervalSeconds * 1000);
+                _queueFlushTimer.Elapsed += StartBackgroundQueueFlusher;
+                _queueFlushTimer.Enabled = true;
+            }
+            // The timer for ingesting files into Kusto
+            if (_ingestFlushTimer == null)
+            {
+                _logger.LogInformation($"Initializing timer for ingest thread every 30 seconds");
+                _ingestFlushTimer = new System.Timers.Timer(30 * 1000);
+                _ingestFlushTimer.Elapsed += StartBackgroundFileIngestor;
+                _ingestFlushTimer.Enabled = true;
+            }
         }
 
         [HttpPost(Name = "IngestIntoKusto")]
@@ -39,92 +88,94 @@ namespace KustoWriterApp.Controllers
                 await Request.Body.CopyToAsync(memoryStream);
                 memoryStream.Seek(0, SeekOrigin.Begin);
                 var decompressed = Conversion.DecompressBody(memoryStream);
-
                 var writerequest = WriteRequest.Parser.ParseFrom(decompressed);
-
                 foreach (var aTimeseries in writerequest.Timeseries)
                 {
                     _timeseriesQueue.Enqueue(aTimeseries);
-
-                    if (_timeseriesQueue.Count > MaxQueueSize)
-                    {
-                        await WriteQueueToFileAsync();
-                    }
                 }
             }
-
             return Ok();
         }
 
-        private void StartBackgroundQueueFlusher()
+        private async void StartBackgroundQueueFlusher(object? source, ElapsedEventArgs e)
         {
-            Task.Run(async () =>
+            if (_timeseriesQueue.Count > 0)
             {
-                while (!_cancellationTokenSource.Token.IsCancellationRequested)
-                {
-                    await Task.Delay(TimeSpan.FromMinutes(MinutesToFlush), _cancellationTokenSource.Token);
-                    await WriteQueueToFileAsync();
-                }
-            }, _cancellationTokenSource.Token);
+                _logger.LogDebug($"Firing time based flusher. Queue size {_timeseriesQueue.Count} at time {DateTime.UtcNow}");
+                await WriteQueueToFileAsync();
+            }
         }
 
-        private void StartBackgroundFileIngestor()
+        private async void StartBackgroundFileIngestor(object? source, ElapsedEventArgs e)
         {
-            Task.Run(async () =>
+            while (_filesToIngest.TryDequeue(out var filePath))
             {
-                while (!_cancellationTokenSource.Token.IsCancellationRequested)
-                {
-                    while (_filesToIngest.TryDequeue(out var filePath))
-                    {
-                        await IngestFileIntoKustoAsync(filePath);
-                    }
-                    await Task.Delay(TimeSpan.FromSeconds(30), _cancellationTokenSource.Token); // Check every 30 seconds
-                }
-            }, _cancellationTokenSource.Token);
+                await IngestFileIntoKustoAsync(filePath);
+            }
         }
 
         private async Task WriteQueueToFileAsync()
         {
-            var filePath = Path.Combine("path_to_your_directory", $"timeseries_{DateTime.UtcNow:yyyyMMddHHmmss}.json");
-
+            var filePath = Path.Combine(Path.GetTempPath(), $"timeseries_{DateTime.UtcNow:yyyyMMddHHmmss}.json");
             var timeseriesList = new List<Prometheus.TimeSeries>();
             while (_timeseriesQueue.TryDequeue(out var timeseries))
             {
                 timeseriesList.Add(timeseries);
             }
-
-            var json = JsonSerializer.Serialize(timeseriesList);
-            await System.IO.File.WriteAllTextAsync(filePath, json);
-            _filesToIngest.Enqueue(filePath);
+            if (timeseriesList.Count > 0)
+            {
+                var json = JsonSerializer.Serialize(timeseriesList, options);
+                Task fileWriteTask = System.IO.File.WriteAllTextAsync(filePath, json);
+                await fileWriteTask.ContinueWith(task =>
+                {
+                    if (task.IsCompletedSuccessfully)
+                    {
+                        _logger.LogInformation($"Wrote {timeseriesList.Count} timeseries to file {filePath}");
+                        _filesToIngest.Enqueue(filePath);
+                    }
+                    else
+                    {
+                        _logger.LogError(task.Exception, $"Could not write to file {filePath}");
+                    }
+                });
+            }
         }
 
         private async Task IngestFileIntoKustoAsync(string filePath)
         {
-            // Implement your Kusto ingestion logic here
-            // For example, you can use the Kusto Data SDK to ingest the file into a Kusto database
-            // This is a placeholder for the actual ingestion logic
-            _logger.LogInformation($"Ingesting file {filePath} into Kusto...");
-
+            // Implement Kusto ingestion logic here
             int retries = 0;
-
-            var kustoConnectionStringBuilderEngine =
-                new KustoConnectionStringBuilder($"https://{_settings.ClusterName}.kusto.windows.net").WithAadApplicationKeyAuthentication(
-                    applicationClientId: _settings.ClientId,
-                    applicationKey: _settings.ClientSecret,
-                    authority: _settings.TenantId);
-
-            using (IKustoIngestClient client = KustoIngestFactory.CreateDirectIngestClient(kustoConnectionStringBuilderEngine))
+            using (IKustoIngestClient client = KustoIngestFactory.CreateQueuedIngestClient(_kustoConnectionStringBuilderEngine, new QueueOptions { MaxRetries = _settings.MaxRetries }))
             {
-                var kustoIngestionProperties = new KustoIngestionProperties(databaseName: _settings.DbName, tableName: _settings.TableName);
-                kustoIngestionProperties.SetAppropriateMappingReference(_settings.MappingName, Kusto.Data.Common.DataSourceFormat.json);
-                kustoIngestionProperties.Format = Kusto.Data.Common.DataSourceFormat.json;
-
-                while (retries < _settings.MaxRetries)
+                while (retries < _settings.MaxRetries) // TODO Should we have this retry since non perm failures are retried automatically 
                 {
+                    var sourceGuid = _sourceIdFileCache.GetOrAdd(filePath, Guid.NewGuid());
+                    var sourceOptions = new StorageSourceOptions
+                    {
+                        DeleteSourceOnSuccess = true,
+                        SourceId = sourceGuid,
+                    };
                     try
                     {
-                        client.IngestFromStorage(filePath, kustoIngestionProperties);
+                        _logger.LogInformation($"Ingesting {filePath} into table {_settings.TableName}. Source id {sourceGuid} at time {DateTime.UtcNow}");
+                        // Fix for the file not found issue
+                        if (!System.IO.File.Exists(filePath))
+                        {
+                            _logger.LogWarning($"File {filePath} does not exist. Skipping ingestion.");
+                            return;
+                        }
+                        Task<IKustoIngestionResult> ingestTask = client.IngestFromStorageAsync(filePath, _kustoIngestionProperties, sourceOptions);
+                        await ingestTask.ContinueWith(task =>
+                        {
+                            if (task.IsFaulted)
+                            {
+                                _logger.LogDebug(task.Exception, $"Could not ingest {filePath} into table {_settings.TableName}. Failed source id {sourceGuid}");
+                                retries++;
+                                Thread.Sleep(_settings.MsBetweenRetries);
+                            }
+                        });
                         return;
+
                     }
                     catch (Exception e)
                     {
@@ -133,7 +184,7 @@ namespace KustoWriterApp.Controllers
                         Thread.Sleep(_settings.MsBetweenRetries);
                     }
                 }
-
+                _sourceIdFileCache.TryRemove(filePath, out _);
                 _logger.LogInformation($"File {filePath} ingested into Kusto.");
             }
         }

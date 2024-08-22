@@ -338,3 +338,8 @@ ASALocalRun/
 
 # BeatPulse healthcheck temp database
 healthchecksdb
+PrometheusIntegrationTests/target/*
+KustoWriterApp/KustoWriterApp.generated.sln
+KustoWriterApp/Controllers/Tests.py
+KustoWriterApp/appsettings.Development.json
+KustoWriterApp/appsettings.json
