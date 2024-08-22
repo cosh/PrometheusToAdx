@@ -64,3 +64,11 @@ The example uses a simple table and mapping semantic. This can be customized usi
 .create table RawData (Labels:dynamic,Samples:dynamic)
 .create table RawData ingestion json mapping "RawDataMapping" '[{ "column" : "d", "datatype" : "dynamic", "path" : "$"}]'
 ```
+
+## Running a sample load test
+
+If you have AZ cli and docker installed on a workstation. A load test run can be performed by running the script **run-e2e-tests.sh**.
+
+```bash
+./run-e2e-tests.sh <kusto/kql fabric cluster url>
+```
