@@ -6,7 +6,6 @@ using PrometheusHelper.Helper;
 using Prometheus;
 using System.Collections.Concurrent;
 using System.Text.Json;
-using System.IO;
 using System.Timers;
 
 
@@ -22,10 +21,7 @@ namespace KustoWriterApp.Controllers
         private readonly SettingsKusto _settings;
         private static readonly ConcurrentQueue<Prometheus.TimeSeries> _timeseriesQueue = new ConcurrentQueue<Prometheus.TimeSeries>();
         private static readonly ConcurrentDictionary<string, System.Guid> _sourceIdFileCache = new ConcurrentDictionary<string, System.Guid>();
-        private readonly ReaderWriterLock _locker = new ReaderWriterLock();
-
         private static readonly ConcurrentQueue<string> _filesToIngest = new ConcurrentQueue<string>();
-        private static readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
         private static readonly JsonSerializerOptions options = new JsonSerializerOptions
         {
             NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals
@@ -38,9 +34,7 @@ namespace KustoWriterApp.Controllers
         {
             _logger = logger;
             _settings = options.Value;
-            var baseKcsb =
-                new KustoConnectionStringBuilder(_settings.ClusterName);
-
+            var baseKcsb = new KustoConnectionStringBuilder(_settings.ClusterName);
             if (_settings.UseManagedIdentity)
             {
                 if (string.IsNullOrEmpty(_settings.AppId))
