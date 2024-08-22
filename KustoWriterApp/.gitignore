@@ -1,0 +1,5 @@
+appsettings.Development.json
+appsettings.json
+appsettings.json.template
+**/appsettings.Development.json
+**/appsettings.json

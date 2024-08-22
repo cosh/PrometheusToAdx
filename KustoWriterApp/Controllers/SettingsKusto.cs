@@ -14,7 +14,6 @@
         public string? AccessToken { get; set; }
         public int MaxRetries { get; set; } = 10;
         public int MsBetweenRetries { get; set; } = 60000;
-        public int MaxBatchSize { get; set; } = 100000;
         public int MaxBatchIntervalSeconds { get; set; } = 5 * 60;
     }
 }

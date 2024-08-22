@@ -17,6 +17,7 @@ scrape_configs:
 remote_write:
   - url: "http://kustoremotewrite:8080/KustoIngest"
     queue_config:
+      max_shards: 200
       max_samples_per_send: 1000
       capacity: 2500
       min_backoff: 1s
