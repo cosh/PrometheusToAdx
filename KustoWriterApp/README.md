@@ -3,7 +3,10 @@
 ## Introduction
 The Prometheus Remote Write plugin allows you to send metrics data from Prometheus to remote storage systems, specifically using Kusto (Azure Data Explorer) as the backend. This plugin is useful for long-term storage, advanced querying, and integrating with other monitoring systems.
 
-The KustoWriterApp project uses a direct controller and does not use any additional 
+The KustoWriterApp project uses a direct controller and does not use any additional components.
+
+## Architecture
+![Alt text](https://raw.githubusercontent.com/cosh/PrometheusToAdx/master/pic/directIngestion.png)
 
 ## Purpose
 The primary purpose of this plugin is to enable the remote storage of Prometheus metrics in Kusto, ensuring that you can retain and analyze your metrics data over extended periods.
